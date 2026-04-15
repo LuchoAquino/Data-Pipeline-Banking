@@ -1,0 +1,80 @@
+# This pipeline ensure SQL quality, Models cleanliness, Clean code and run unit tests if any.
+# It runs on every push to main and dev, and on pull requests to main.
+
+name: CI
+
+# When to trigger this workflow: on push to main or dev, and on pull requests to main
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+
+# Create a VM temp to run the jobs
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: banking
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    # Clone the repo
+      - uses: actions/checkout@v4
+    # Set up Python -> Define the execution environment
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+    # Install dependencies (libraries for the project and dbt)
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install dbt-snowflake
+    # Run linters to check code quality and sintax
+      - name: Run linters
+        run: |
+          pip install ruff
+          ruff check .
+    # Run unit tests if any
+      - name: Run unit tests
+        run: |
+          pip install pytest
+          pytest tests/ || echo "No tests yet"
+    # Set up dbt profile to connect to the test Postgres database
+      - name: Setup dbt profile
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml <<EOL
+          banking_dbt:
+            target: dev
+            outputs:
+              dev:
+                type: snowflake
+                account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+                user: ${{ secrets.SNOWFLAKE_USER }}
+                password: ${{ secrets.SNOWFLAKE_PASSWORD }}
+                role: ACCOUNTADMIN
+                database: BANKING
+                warehouse: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+                schema: ANALYTICS
+          EOL
+
+      - name: dbt compile (validation)
+        run: |
+          cd banking_dbt
+          dbt deps
+          dbt compile

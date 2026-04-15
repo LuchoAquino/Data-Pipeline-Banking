@@ -79,7 +79,7 @@ def write_to_minio(table_name, records):
 - Once the batch size is reached, the buffer triggers the "write_to_minio" function to upload the batch of records.
 - After uploading, the buffer is cleared to start accumulating the next batch of records.
 '''
-batch_size = 50  # Number of records to accumulate before uploading
+batch_size = 30  # Number of records to accumulate before uploading
 buffer = {  # In-memory buffers for each topic
     'banking_server.public.customers': [],
     'banking_server.public.accounts': [],

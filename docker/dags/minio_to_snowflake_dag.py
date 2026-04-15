@@ -1,5 +1,25 @@
+'''
+This script define an Airflow DAG wich objective is to move the data from MinIO to Snowflake. 
+
+Workflow:
+- Download data from MinIO, this data will be stored in Airflow's memory (XCom).
+- Load the downloaded Parquet files into Snowflake RAW tables using Snowflake's COPY INTO command.
+
+
+Postgres (CDC)
+     ↓
+Kafka / Debezium
+     ↓
+MinIO (Parquet files)  ← The DAG starts here
+     ↓
+Airflow
+     ↓
+Snowflake (RAW / Bronze)
+
+'''
+
 import os
-import boto3
+import boto3 # AWS SDK for Python, used to interact with MinIO (S3-compatible storage)
 import snowflake.connector
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -50,7 +70,7 @@ def download_from_minio():
     return local_files
 
 def load_to_snowflake(**kwargs):
-    local_files = kwargs["ti"].xcom_pull(task_ids="download_minio")
+    local_files = kwargs["ti"].xcom_pull(task_ids="download_minio") # Get the list of downloaded files from Airflow's XCom
     if not local_files:
         print("No files found in MinIO.")
         return
@@ -71,7 +91,7 @@ def load_to_snowflake(**kwargs):
             continue
 
         for f in files:
-            cur.execute(f"PUT file://{f} @%{table}")
+            cur.execute(f"PUT file://{f} @%{table}") # Upload the file to Snowflake's internal stage
             print(f"Uploaded {f} -> @{table} stage")
 
         copy_sql = f"""
@@ -86,10 +106,10 @@ def load_to_snowflake(**kwargs):
     cur.close()
     conn.close()
 
-# -------- Airflow DAG --------
+# -------- Orchestrator Airflow DAG --------
 default_args = {
     "owner": "airflow",
-    "retries": 1,
+    "retries": 1, # Retry once if the task fails
     "retry_delay": timedelta(minutes=1),
 }
 
@@ -97,7 +117,7 @@ with DAG(
     dag_id="minio_to_snowflake_banking",
     default_args=default_args,
     description="Load MinIO parquet into Snowflake RAW tables",
-    schedule_interval="*/1 * * * *",
+    schedule_interval="*/1 * * * *", # Every minute for testing
     start_date=datetime(2025, 1, 1),
     catchup=False,
 ) as dag:

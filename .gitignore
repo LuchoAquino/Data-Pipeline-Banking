@@ -1,0 +1,15 @@
+# GitHub Actions cache
+/.github
+
+# Docker cache
+docker/logs/
+docker/minio/
+docker/plugins/
+docker/postgres/
+
+.env
+__pycache__/
+*.pyc
+.vscode/
+.DS_Store
+logs/
